@@ -35,7 +35,7 @@ class QmlBench : public QObject
 {
     Q_OBJECT
 public:
-    explicit QmlBench(QObject *parent = nullptr);
+    explicit QmlBench(QObject *parent = /*nullptr*/0);
     ~QmlBench();
 
     Q_INVOKABLE qreal getRandom();

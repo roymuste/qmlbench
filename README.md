@@ -1,5 +1,5 @@
 # qmlbench
-test
+
 qmlbench is a tool for benchmarking Qt, QML and QtQuick as a whole stack rather
 than in isolation. The benchmarks it provides exercise a very large part of
 Quick, QML, Gui, Core, and as a result can be considered a decent metric for

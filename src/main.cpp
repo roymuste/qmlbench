@@ -51,11 +51,11 @@ QStringList processCommandLineArguments(const QCoreApplication &app)
 
     QCommandLineOption subprocessOption(subprocessOptionString);
 
-#if QT_VERSION >= QT_VERSION_CHECK(5, 8, 0)
-    subprocessOption.setFlags(subprocessOption.flags() | QCommandLineOption::HiddenFromHelp);
-#else
-    subprocessOption.setHidden(true);
-#endif
+//#if QT_VERSION >= QT_VERSION_CHECK(5, 8, 0)
+//    subprocessOption.setFlags(subprocessOption.flags() | QCommandLineOption::HiddenFromHelp);
+//#else
+//    subprocessOption.setHidden(true);
+//#endif
 
     parser.addOption(subprocessOption);
 
@@ -256,6 +256,49 @@ void setupDefaultSurfaceFormat(int argc, char **argv)
     }
 }
 
+
+struct temp_ptr {
+    QByteArray* stdErrBuf;
+    QByteArray* stdOutBuf;
+    QProcess* p;
+} the_ptr;
+
+static void test_err() {
+//    qDebug()<<__FUNCTION__;
+    (*the_ptr.stdErrBuf) += the_ptr.p->readAllStandardError();
+    int nlIdx = 0;
+    forever {
+        nlIdx = (*the_ptr.stdErrBuf).indexOf('\n');
+        if (nlIdx == -1)
+            break;
+        QByteArray ln = (*the_ptr.stdErrBuf).left(nlIdx);
+        (*the_ptr.stdErrBuf) = (*the_ptr.stdErrBuf).right((*the_ptr.stdErrBuf).size() - nlIdx - 1);
+        std::cerr << ln.constData() << "\n";
+    }
+}
+
+static void test_out() {
+    (*the_ptr.stdOutBuf) += QString::fromLocal8Bit(the_ptr.p->readAllStandardOutput());
+    if (Options::instance.printJsonToStdout)
+        return;
+    int nlIdx = 0;
+    forever {
+        nlIdx = (*the_ptr.stdOutBuf).indexOf('\n');
+        if (nlIdx == -1)
+            break;
+        QByteArray ln = (*the_ptr.stdOutBuf).left(nlIdx);
+        (*the_ptr.stdOutBuf) = (*the_ptr.stdOutBuf).right((*the_ptr.stdOutBuf).size() - nlIdx - 1);
+        std::cout << ln.constData() << "\n";
+    }
+}
+
+static void test_exit() {
+    // Flush the leftovers (if any)
+    std::cerr << (*the_ptr.stdErrBuf).constData() << "\n";
+    if (!Options::instance.printJsonToStdout)
+        std::cout << (*the_ptr.stdOutBuf).constData() << "\n";
+}
+
 int runHostProcess(const QCoreApplication &app, const QStringList &positionalArgs)
 {
     int ret = 0;
@@ -284,57 +327,61 @@ int runHostProcess(const QCoreApplication &app, const QStringList &positionalArg
     sanitizedArgs.append(QLatin1String("--") + subprocessOptionString);
 
     // Add everything that was not a file/dir
-    for (const QString &arg : qApp->arguments()) {
+    foreach (const QString &arg , qApp->arguments()) {
         if (!positionalArgs.contains(arg) && arg != app.arguments().first())
             sanitizedArgs.append(arg);
     }
 
     ret = 0;
 
-    for (const Benchmark &b : Options::instance.benchmarks) {
+    foreach (const Benchmark &b , Options::instance.benchmarks) {
         QStringList sanitizedArgCopy = sanitizedArgs;
         sanitizedArgCopy.append(b.fileName);
 
         QProcess *p = new QProcess;
+        the_ptr.p = p;
         QByteArray stdErrBuf;
-        QObject::connect(p, &QProcess::readyReadStandardError, p, [&]() {
-            stdErrBuf += p->readAllStandardError();
-            int nlIdx = 0;
-            forever {
-                nlIdx = stdErrBuf.indexOf('\n');
-                if (nlIdx == -1)
-                    break;
-                QByteArray ln = stdErrBuf.left(nlIdx);
-                stdErrBuf = stdErrBuf.right(stdErrBuf.size() - nlIdx - 1);
-                std::cerr << ln.constData() << "\n";
-            }
-        });
+        the_ptr.stdErrBuf = &stdErrBuf;
+        QObject::connect(p, &QProcess::readyReadStandardError, p, &test_err);
+//        QObject::connect(p, &QProcess::readyReadStandardError, p, [&]() {
+//            stdErrBuf += p->readAllStandardError();
+//            int nlIdx = 0;
+//            forever {
+//                nlIdx = stdErrBuf.indexOf('\n');
+//                if (nlIdx == -1)
+//                    break;
+//                QByteArray ln = stdErrBuf.left(nlIdx);
+//                stdErrBuf = stdErrBuf.right(stdErrBuf.size() - nlIdx - 1);
+//                std::cerr << ln.constData() << "\n";
+//            }
+//        });
 
         QByteArray stdOutBuf;
-
-        QObject::connect(p, &QProcess::readyReadStandardOutput, p, [&]() {
-            stdOutBuf += QString::fromLocal8Bit(p->readAllStandardOutput());
-            if (Options::instance.printJsonToStdout)
-                return;
-            int nlIdx = 0;
-            forever {
-                nlIdx = stdOutBuf.indexOf('\n');
-                if (nlIdx == -1)
-                    break;
-                QByteArray ln = stdOutBuf.left(nlIdx);
-                stdOutBuf = stdOutBuf.right(stdOutBuf.size() - nlIdx - 1);
-                std::cout << ln.constData() << "\n";
-            }
-        });
+        the_ptr.stdOutBuf = &stdOutBuf;
+        QObject::connect(p, &QProcess::readyReadStandardOutput, p, &test_out);
+//        QObject::connect(p, &QProcess::readyReadStandardOutput, p, [&]() {
+//            stdOutBuf += QString::fromLocal8Bit(p->readAllStandardOutput());
+//            if (Options::instance.printJsonToStdout)
+//                return;
+//            int nlIdx = 0;
+//            forever {
+//                nlIdx = stdOutBuf.indexOf('\n');
+//                if (nlIdx == -1)
+//                    break;
+//                QByteArray ln = stdOutBuf.left(nlIdx);
+//                stdOutBuf = stdOutBuf.right(stdOutBuf.size() - nlIdx - 1);
+//                std::cout << ln.constData() << "\n";
+//            }
+//        });
 
         QObject::connect(p,
-            static_cast<void(QProcess::*)(int, QProcess::ExitStatus)>(&QProcess::finished),
-            [=](int /*exitCode*/, QProcess::ExitStatus /*exitStatus*/) {
-            // Flush the leftovers (if any)
-            std::cerr << stdErrBuf.constData() << "\n";
-            if (!Options::instance.printJsonToStdout)
-                std::cout << stdOutBuf.constData() << "\n";
-        });
+            static_cast<void(QProcess::*)(int, QProcess::ExitStatus)>(&QProcess::finished), &test_exit);
+//            [=](int /*exitCode*/, QProcess::ExitStatus /*exitStatus*/) {
+//            // Flush the leftovers (if any)
+//            std::cerr << stdErrBuf.constData() << "\n";
+//            if (!Options::instance.printJsonToStdout)
+//                std::cout << stdOutBuf.constData() << "\n";
+//        });
 
         if (ret == 0) {
             p->start(app.arguments().first(), sanitizedArgCopy);
@@ -421,6 +468,19 @@ int main(int argc, char **argv)
     QStringList positionalArgs = processCommandLineArguments(*app);
 
     int ret = 0;
+    if (needsGui) {
+        QString fontFilePath;
+        fontFilePath.append("<path/font>");
+        int ret_f = QFontDatabase::addApplicationFont(fontFilePath);
+        if (ret_f < 0) {
+            qDebug()<<"load failed"<<fontFilePath;
+        } else {
+            QString name(QFontDatabase::applicationFontFamilies(ret_f).at(0));
+            qDebug()<<"set font-------->"<<name;
+            QFont font(name);
+            static_cast<QGuiApplication&>(*app).setFont(font);
+        }
+    }
 
     // qmlbench works as a split process mode. The parent process
     // (!isSubProcess) proxies a bunch of child processes that actually do the

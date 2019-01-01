@@ -177,8 +177,9 @@ void ResultRecorder::recordOperationsPerFrameAverage(qreal ops, int samples, qre
 
 void ResultRecorder::mergeResults(const QJsonObject &o)
 {
-    // Merge the keys from the subprocess in where they should be.
-    for (auto it = o.constBegin(); it != o.constEnd(); ++it) {
+    // Merge the keys from the subprocess in where they should be
+    QJsonObject::const_iterator it;
+    for (it = o.constBegin(); it != o.constEnd(); ++it) {
         m_results[it.key()] = it.value().toVariant();
     }
 }

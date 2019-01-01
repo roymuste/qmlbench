@@ -63,9 +63,9 @@ public:
     int rowNumber() const;
     void setRowNumber(int rowNumber);
 
-    QHash<int, QByteArray> roleNames() const override;
-    int rowCount(const QModelIndex&) const override;
-    QVariant data(const QModelIndex &, int role) const override;
+    QHash<int, QByteArray> roleNames() const /*override*/;
+    int rowCount(const QModelIndex&) const /*override*/;
+    QVariant data(const QModelIndex &, int role) const /*override*/;
 
     // TODO: consider testing setData too.
 
